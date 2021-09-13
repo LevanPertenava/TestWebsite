@@ -12,6 +12,8 @@ using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using NETCore.MailKit.Core;
 using EmailService;
+using Microsoft.AspNetCore.DataProtection;
+using EmployeeManagement.Security;
 
 namespace EmployeeManagement.Controllers
 {
@@ -34,6 +36,16 @@ namespace EmployeeManagement.Controllers
             return View();
         }
 
+        private async Task VerifyMail(ApplicationUser user)
+        {
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+
+            var link = Url.Action("ConfirmEmail", "Account", new { userId = user.Id, token }, protocol: Request.Scheme, host: Request.Host.Value);
+
+            var message = new Message(new string[] { user.Email }, "Verify Email", $"<a href=\"{link}\">Verify Email</a>");
+            await _emailSender.SendEmailAsync(message, true);
+        }
+
         [HttpPost]
         public async Task<IActionResult> Register(RegisterViewModel model)
         {
@@ -49,12 +61,7 @@ namespace EmployeeManagement.Controllers
 
                 if (result.Succeeded)
                 {
-                    var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-
-                    var link = Url.Action("ConfirmEmail", "Account", new { userId = user.Id, token }, protocol: Request.Scheme, host: Request.Host.Value);
-
-                    var message = new Message(new string[] { user.Email }, "Verify Email", $"<a href=\"{link}\">Verify Email</a>");
-                    _emailSender.SendEmail(message, true);
+                    await VerifyMail(user);
                     return View("SuccessfulRegistration");
                 }
                 else
@@ -224,6 +231,9 @@ namespace EmployeeManagement.Controllers
                             Email = email
                         };
                         await _userManager.CreateAsync(user);
+                        await VerifyMail(user);
+
+                        return View("SuccessfulRegistration");
                     }
 
                     await _userManager.AddLoginAsync(user, info);
@@ -237,6 +247,73 @@ namespace EmployeeManagement.Controllers
 
                 return View("Error");
             }
+        }
+
+        [HttpGet]
+        public IActionResult ForgotPassword()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByEmailAsync(model.Email);
+                if (user is not null && await _userManager.IsEmailConfirmedAsync(user))
+                {
+                    var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+                    var passwordResetLink = Url.Action("ResetPassword", "Account",
+                          new { email = model.Email, token = token }, Request.Scheme
+                        );
+
+                    var message = new Message(new string[] { user.Email }, "Reset your password", $"<a href=\"{passwordResetLink}\">Enter the link for resetting password</a>");
+                    await _emailSender.SendEmailAsync(message, true);
+                }
+                return View("ForgotPasswordConfirmation");
+            }
+            return View(model);
+        }
+
+        [HttpGet]
+        public IActionResult ResetPassword(string email, string token)
+        {
+            if (email is null || token is null)
+            {
+                ModelState.AddModelError("", "Invalid password reset token");
+            }
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByEmailAsync(model.Email);
+                if (await _userManager.CheckPasswordAsync(user, model.Password))
+                {
+                    ModelState.AddModelError("", "This is the same password. Use another one");
+                    return View(model);
+                }
+                if (user is not null)
+                {
+                    var result = await _userManager.ResetPasswordAsync(user, model.Token, model.Password);
+                    if (result.Succeeded)
+                    {
+                        return View("ResetPasswordConfirmation");
+                    }
+                    foreach (var error in result.Errors)
+                    {
+                        ModelState.AddModelError("", error.Description);
+                    }
+                    return View(model);
+                }
+                return View("ResetPasswordConfirmation");
+            }
+            return View(model);
         }
     }
 }

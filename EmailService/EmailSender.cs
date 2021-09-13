@@ -15,11 +15,11 @@ namespace EmailService
         {
             _emailConfiguration = emailConfiguration;
         }
-        public void SendEmail(Message message, bool isHtml = false)
+        public async Task SendEmailAsync(Message message, bool isHtml = false)
         {
             var emailMessage = CreateEmailMessage(message, isHtml);
 
-            Send(emailMessage);
+            await SendAsync(emailMessage);
         }
 
         private MimeMessage CreateEmailMessage(Message message, bool isHtml = false)
@@ -41,21 +41,21 @@ namespace EmailService
             return emailMessage;
         }
 
-        private void Send(MimeMessage mailMessage)
+        private async Task SendAsync(MimeMessage mailMessage)
         {
             using (var client = new SmtpClient())
             {
                 try
                 {
-                    client.Connect(_emailConfiguration.SmtpServer, _emailConfiguration.Port, true);
+                    await client.ConnectAsync(_emailConfiguration.SmtpServer, _emailConfiguration.Port, true);
                     //client.AuthenticationMechanisms.Remove("XOAUTH2");
-                    client.Authenticate(_emailConfiguration.UserName, _emailConfiguration.Password);
+                    await client.AuthenticateAsync(_emailConfiguration.UserName, _emailConfiguration.Password);
 
-                    client.Send(mailMessage);
+                    await client.SendAsync(mailMessage);
                 }
                 finally
                 {
-                    client.Disconnect(true);
+                    await client.DisconnectAsync(true);
                 }
             }
         }

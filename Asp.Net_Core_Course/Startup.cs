@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using NETCore.MailKit.Extensions;
 using NETCore.MailKit.Infrastructure.Internal;
 using EmailService;
+using EmployeeManagement.Security;
 
 namespace EmployeeManagement
 {
@@ -46,18 +47,26 @@ namespace EmployeeManagement
                 options.Password.RequiredLength = 3;
 
                 options.SignIn.RequireConfirmedEmail = true;
+
+                options.Tokens.EmailConfirmationTokenProvider = "CustomEmailConfirmation";
             })
                 .AddEntityFrameworkStores<AppDbContext>()
-                .AddDefaultTokenProviders();
+                .AddDefaultTokenProviders()
+                .AddTokenProvider<CustomEmailConfirmationTokenProvider<ApplicationUser>>("CustomEmailConfirmation");
 
+            services.Configure<DataProtectionTokenProviderOptions>(options =>
+            {
+                options.TokenLifespan = TimeSpan.FromHours(5);
+            });
+
+            // this will override previous Token, but only email confirmation token type
+            services.Configure<CustomEmailConfirmationTokenProviderOptions>(options =>
+            {
+                options.TokenLifespan = TimeSpan.FromHours(1);
+            });
             services.ConfigureApplicationCookie(options =>
             {
                 options.AccessDeniedPath = new PathString("/Administration/AccessDenied");
-            });
-
-            services.AddMailKit(options =>
-            {
-                options.UseMailKit(_configuration.GetSection("Email").Get<MailKitOptions>());
             });
 
             services.AddAuthentication()
@@ -89,6 +98,8 @@ namespace EmployeeManagement
             });
 
             services.AddScoped<IEmployeeRepository, SQLEmployeeRepository>();
+
+            services.AddSingleton<DataProtectionPurposeStrings>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -108,7 +119,7 @@ namespace EmployeeManagement
 
             app.UseStaticFiles();
 
-            app.UseRouting();
+            app.UseRouting();   
 
             app.UseAuthentication();
 
